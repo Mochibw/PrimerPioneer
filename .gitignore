@@ -12,3 +12,4 @@ wheels/
 # Temporary file
 data/temp/
 data/temp_cds
+data/rag_db/ee371148-840e-47f8-ba84-895549ae4ecb/length.bin
