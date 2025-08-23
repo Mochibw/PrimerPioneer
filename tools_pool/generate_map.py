@@ -9,6 +9,7 @@ import numpy as np
 from matplotlib.patches import Arc, Circle, Polygon
 from matplotlib.text import Text
 import matplotlib.patheffects as path_effects
+from tools_pool.annotate_features import annotate_features
 
 # Add the parent directory to the sys.path to find common_utils
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -89,13 +90,13 @@ class PlasmidMapper:
         ax.axis('off')
         
         COLOR_SCHEME = {
-            "promoter": "#FFD700", "terminator": "#FF6347", "resistance": "#32CD32",
-            "origin": "#1E90FF", "gene": "#87CEEB", "cds": "#87CEEB", "tag": "#BA55D3",
-            "enhancer": "#FFA07A", "misc_feature": "#A9A9A9", "default": "#66ccff"
+            "promoter": "#B4FDFF", "terminator": "#FF6347", "resistance": "#32CD32",
+            "origin": "#FBFF02", "rep_origin": "#1E90FF", "gene": "#87CEEB", "cds": "#FF002F", "tag": "#BA55D3",
+            "enhancer": "#FFA07A", "polyA_signal": "#000000", "default": "#A9A9A9"
         }
         
         center = (0.5, 0.5)
-        outer_radius = 0.45
+        outer_radius = 0.4
         inner_radius = outer_radius - 0.01
         
         # 绘制质粒骨架
@@ -110,14 +111,17 @@ class PlasmidMapper:
                 [center[1] + inner_radius * np.sin(angle), center[1] + (inner_radius - 0.015) * np.sin(angle)],
                 'k-', linewidth=1
             )
-            if mark["label"] == "0": # 仅在0点标记数字
-                 ax.text(
-                    center[0] + (inner_radius - 0.03) * np.cos(angle),
-                    center[1] + (inner_radius - 0.03) * np.sin(angle),
-                    mark["label"], ha='center', va='center', fontsize=10, fontweight='bold'
-                )
+            # 为所有刻度标记添加数字
+            ax.text(
+                center[0] + (inner_radius - 0.03) * np.cos(angle),
+                center[1] + (inner_radius - 0.03) * np.sin(angle),
+                mark["label"], ha='center', va='center', fontsize=10, fontweight='bold'
+            )
 
         # 绘制特征
+        # 存储已绘制的标签位置，用于避免重叠
+        plotted_labels = []
+        
         for feat in self.features_to_plot:
             start, end = feat["start"], feat["end"]
             start_angle_deg = 360 - (360 * start / self.sequence_length) + 90
@@ -127,6 +131,10 @@ class PlasmidMapper:
                 end_angle_deg += 360
 
             color = COLOR_SCHEME.get(feat["feature_type"], COLOR_SCHEME["default"])
+            # 为颜色添加透明度
+            color_rgba = tuple(int(color[i:i+2], 16)/255.0 for i in (1, 3, 5)) + (0.4,)  # 添加透明度
+            color = color_rgba
+            
             arc_radius = inner_radius - 0.04
             
             arc = Arc(
@@ -138,11 +146,35 @@ class PlasmidMapper:
 
             # 绘制特征标签 (简化版，放置在弧线中点外部)
             if feat["plot_label"]:
-                mid_angle_rad = np.radians((start_angle_deg + end_angle_deg) / 2)
-                label_radius = arc_radius + 0.05
+                mid_angle_deg = (start_angle_deg + end_angle_deg) / 2
+                mid_angle_rad = np.radians(mid_angle_deg)
+                
+                # 计算标签位置
+                label_radius = arc_radius + 0.08  # 增加标签与圆环的距离
                 text_x = center[0] + label_radius * np.cos(mid_angle_rad)
                 text_y = center[1] + label_radius * np.sin(mid_angle_rad)
-                ax.text(text_x, text_y, feat["label"], ha='center', va='center', fontsize=9, fontweight='bold')
+                
+                # 检查标签是否与已绘制的标签重叠，如果重叠则调整位置
+                overlap = False
+                for plotted_label in plotted_labels:
+                    distance = np.sqrt((text_x - plotted_label[0])**2 + (text_y - plotted_label[1])**2)
+                    if distance < 0.1:  # 如果距离小于阈值，认为重叠
+                        overlap = True
+                        break
+                
+                # 如果重叠，调整标签位置
+                if overlap:
+                    # 尝试将标签放置在更远的位置
+                    label_radius += 0.05
+                    text_x = center[0] + label_radius * np.cos(mid_angle_rad)
+                    text_y = center[1] + label_radius * np.sin(mid_angle_rad)
+                
+                text = ax.text(text_x, text_y, feat["label"], ha='center', va='center', fontsize=9, fontweight='bold')
+                # 为文字添加白色轮廓，提高可读性
+                text.set_path_effects([path_effects.Stroke(linewidth=3, foreground='white'), path_effects.Normal()])
+                
+                # 记录已绘制的标签位置
+                plotted_labels.append((text_x, text_y))
 
             # 绘制箭头
             if feat.get("arrow", False):
@@ -178,7 +210,9 @@ class PlasmidMapper:
 
             ax.plot([site_x, label_x], [site_y, label_y], color=site["color"], linestyle='-', linewidth=0.8)
             label_text = f"{site['name']} ({site['position']})"
-            ax.text(label_x, label_y, label_text, ha='center', va='center', fontsize=9, color=site["color"])
+            text = ax.text(label_x, label_y, label_text, ha='center', va='center', fontsize=9, color=site["color"])
+            # 为文字添加白色轮廓，提高可读性
+            text.set_path_effects([path_effects.Stroke(linewidth=3, foreground='white'), path_effects.Normal()])
 
         # 添加标题和尺寸
         ax.set_title(self.title, fontsize=16, fontweight='bold', y=1.0)
@@ -204,12 +238,15 @@ def generate_map(json_path: str, output_path: Optional[str] = None) -> Dict[str,
     if not os.path.exists(json_path):
         raise FileNotFoundError(f"输入文件未找到: {json_path}")
 
+    # 自动注释常见特征
+    annotate_features(json_path)
+
+    record = load_sequence_from_json(json_path)
+    
     if output_path is None:
         base_name = os.path.splitext(os.path.basename(json_path))[0]
         output_path = os.path.join(os.path.dirname(json_path), f"{base_name}_map.png")
 
-    record = load_sequence_from_json(json_path)
-    
     mapper = PlasmidMapper(record)
     mapper.generate_map(output_path=output_path)
     
