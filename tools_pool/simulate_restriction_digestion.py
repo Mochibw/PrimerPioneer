@@ -154,7 +154,7 @@ def simulate_restriction_digestion(json_path: str,
     all_left3_end: Dict[int, FragmentEnd] = {}
     all_right5_end: Dict[int, FragmentEnd] = {}
     all_info_messages: List[str] = []
-    MIN_FLANKING_BASES = 6
+    MIN_FLANKING_BASES = 4
 
     for enz in enzymes:
         name = enz.get("name")
