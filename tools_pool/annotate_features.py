@@ -76,6 +76,13 @@ def annotate_features(json_path: str, output_path: Optional[str] = None) -> Dict
     existing_features = record.get("features", [])
     found_features = list(existing_features)  # Copy existing features
     
+    # Create a set to store unique feature identifiers for quick lookups
+    existing_feature_signatures = set()
+    for f in existing_features:
+        label = f.get("qualifiers", {}).get("label", "")
+        signature = (label, f.get("start"), f.get("end"), f.get("strand"))
+        existing_feature_signatures.add(signature)
+        
     # Keep track of added annotations
     added_annotations = []
     
@@ -95,17 +102,20 @@ def annotate_features(json_path: str, output_path: Optional[str] = None) -> Dict
             validated_coords = clamp_and_validate(start_1b, end_1b, L)
             if validated_coords:
                 start, end = validated_coords
-                feature: Feature = {
-                    "type": feature_type,
-                    "start": int(start),
-                    "end": int(end),
-                    "strand": 1,
-                    "qualifiers": {"label": name}
-                }
-                found_features.append(feature)
-                # Add to added annotations list if not already there
-                annotation_desc = f"{name} ({feature_type}) at position {start}-{end} on forward strand"
-                if annotation_desc not in added_annotations:
+                feature_signature = (name, start, end, 1)
+                if feature_signature not in existing_feature_signatures:
+                    feature: Feature = {
+                        "type": feature_type,
+                        "start": int(start),
+                        "end": int(end),
+                        "strand": 1,
+                        "qualifiers": {"label": name}
+                    }
+                    found_features.append(feature)
+                    existing_feature_signatures.add(feature_signature)
+                    
+                    # Add to added annotations list
+                    annotation_desc = f"{name} ({feature_type}) at position {start}-{end} on forward strand"
                     added_annotations.append(annotation_desc)
         
         # Search on reverse strand
@@ -114,17 +124,20 @@ def annotate_features(json_path: str, output_path: Optional[str] = None) -> Dict
             validated_coords = clamp_and_validate(start_1b, end_1b, L)
             if validated_coords:
                 start, end = validated_coords
-                feature: Feature = {
-                    "type": feature_type,
-                    "start": int(start),
-                    "end": int(end),
-                    "strand": -1,
-                    "qualifiers": {"label": name}
-                }
-                found_features.append(feature)
-                # Add to added annotations list if not already there
-                annotation_desc = f"{name} ({feature_type}) at position {start}-{end} on reverse strand"
-                if annotation_desc not in added_annotations:
+                feature_signature = (name, start, end, -1)
+                if feature_signature not in existing_feature_signatures:
+                    feature: Feature = {
+                        "type": feature_type,
+                        "start": int(start),
+                        "end": int(end),
+                        "strand": -1,
+                        "qualifiers": {"label": name}
+                    }
+                    found_features.append(feature)
+                    existing_feature_signatures.add(feature_signature)
+                    
+                    # Add to added annotations list
+                    annotation_desc = f"{name} ({feature_type}) at position {start}-{end} on reverse strand"
                     added_annotations.append(annotation_desc)
     
     # Update the record with new features
