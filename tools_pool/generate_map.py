@@ -3,6 +3,7 @@ import os
 import json
 import random
 from typing import List, Dict, Optional
+from datetime import datetime
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -245,7 +246,8 @@ def generate_map(json_path: str, output_path: Optional[str] = None) -> Dict[str,
     
     if output_path is None:
         base_name = os.path.splitext(os.path.basename(json_path))[0]
-        output_path = os.path.join(os.path.dirname(json_path), f"{base_name}_map.png")
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_path = os.path.join(os.path.dirname(json_path), f"{base_name}_map_{timestamp}.png")
 
     mapper = PlasmidMapper(record)
     mapper.generate_map(output_path=output_path)
