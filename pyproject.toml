@@ -1,0 +1,15 @@
+[project]
+name = "ppversion2"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "chromadb>=1.0.20",
+    "matplotlib>=3.10.5",
+    "mcp[cli]>=1.13.0",
+    "sentence-transformers>=5.1.0",
+    "snapgene-reader>=0.1.23",
+    "dashscope>=1.0.0",
+    "openai>=1.0.0",
+]
