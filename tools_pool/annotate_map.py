@@ -1,0 +1,1 @@
+# annotate_map.py 用于向map文件添加features信息
