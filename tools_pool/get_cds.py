@@ -14,7 +14,7 @@ from common_utils.file_operations import write_record_to_json
 logging.basicConfig(level=logging.INFO, format='[%(levelname)s] %(message)s')
 
 # 必须填邮箱（NCBI 要求）
-Entrez.email = os.getenv("NCBI_EMAIL", "fym22@mails.tsinghua.edu.cn")
+Entrez.email = os.getenv("NCBI_EMAIL", "xxxxx@mails.tsinghua.edu.cn")
 Entrez.api_key = os.getenv("NCBI_API_KEY", None)
 
 # ------- Windows/跨平台安全文件名处理 -------
