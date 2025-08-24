@@ -1,0 +1,11 @@
+[project]
+name = "ppversion2"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "matplotlib>=3.10.5",
+    "mcp[cli]>=1.13.0",
+    "snapgene-reader>=0.1.23",
+]

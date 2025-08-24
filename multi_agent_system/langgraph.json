@@ -1,0 +1,9 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "agent": "./supervisor_workflow.py:app"
+  },
+  "env": ".env",
+  "image_distro": "wolfi",
+  "entrypoint": "./supervisor_workflow.py:app"
+}
