@@ -5,9 +5,6 @@ from typing import TypedDict, Optional, Literal, Annotated
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import AnyMessage, add_messages
 from langchain_core.messages import HumanMessage, AIMessage
-
-from langchain_deepseek import ChatDeepSeek
-from langchain_community.chat_models import ChatTongyi
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 
@@ -26,7 +23,6 @@ from tools_pool.v0.tools_pool.simulate_oligo_annealing import simulate_oligo_ann
 from tools_pool.v0.tools_pool.simulate_pcr import simulate_pcr
 from tools_pool.v0.tools_pool.simulate_phosphorylation import simulate_phosphorylation
 from tools_pool.v0.tools_pool.simulate_restriction_digestion import simulate_restriction_digestion
-# list_data, 分割片段, homology_based_assembly, validate_construct, synthesize_dna
 
 # =========================
 # Config
@@ -40,13 +36,6 @@ llm = ChatOpenAI(
     # temperature=0.2,              # 可调
     # max_output_tokens=1024,       # 可调
     )
-
-# llm = ChatTongyi(
-#     model="qwen2.5-72b-instruct",   # 常见：qwen2.5-32b-instruct / qwen2.5-7b-instruct / qwen-turbo 等
-#     # temperature=0.2,
-#     # max_tokens=1024,
-# )
-
 
 # =========================
 # 各 Agent（用 create_react_agent 包一层，拥有各自工具池）
@@ -247,6 +236,7 @@ graph.add_conditional_edges(
 )
 
 app = graph.compile()
+
 # Visualize the graph
 # For Jupyter or GUI environments:
 # app.get_graph().draw_mermaid_png()
@@ -261,7 +251,7 @@ app = graph.compile()
 # 运行示例
 # =========================
 if __name__ == "__main__":
-    user_task = "我需要克隆人类的marco基因，请你给出完整实验流程。dna载体文件路径r'D:\workspace\python\hello_MCP\PrimerPioneerSetup\pcDNA3.1(-).dna'。你具备读写文件的权限。"
+    user_task = "我需要克隆人类的marco基因，请你给出完整实验流程。dna载体文件路径为{}'。你具备读写文件的权限。"
     init_state: GraphState = {
         "messages": [HumanMessage(content=user_task)],
         "iterations": 0,

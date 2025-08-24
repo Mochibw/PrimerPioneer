@@ -1,0 +1,5 @@
+*.pyc
+*.fasta
+*.pckl
+*.tmp
+*.bin
