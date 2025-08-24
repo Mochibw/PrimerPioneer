@@ -1,0 +1,2 @@
+酶切后两端过短，说明需要在设计引物时，在酶切位点的5'末端加保护碱基。常用 4–6 个任意碱基（最好以 A/T 为主），使得酶切位点距离 DNA 末端至少有 4 bp 以上。
+将基因X克隆到载体Y时，可先查询载体Y的MCS区域，选择基因X内部不存在的双酶切位点，设计引物时，在引物5’端加上上下游酶切位点和保护碱基，调用simulate_pcr进行模拟，之后用simulate_restriction_enzyme对amplicon和vector进行模拟切割，然后调用simulate_ligation连接并转化进行验证。
