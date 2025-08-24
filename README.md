@@ -72,6 +72,63 @@ PrimerPioneer 的核心目标是成为一个智能的“虚拟分子生物学家
 - `data/` 目录用于存放用户上传的序列文件（如 `.fasta`, `.gb`）以及程序生成的中间文件和结果文件。
 - `common_utils/` 包含文件操作和序列处理的通用工具函数，确保数据格式的统一和正确传递。
 
+## 环境配置与运行
+
+### 1. 外部API与服务配置
+
+为了使项目能够正常运行，您需要配置多个外部API密钥和第三方服务。建议在项目根目录下创建一个 `.env` 文件来统一管理这些密钥。
+
+- **NCBI API (通用)**
+  - **用途**: 从NCBI数据库获取基因序列。
+  - **文件**: `tools_pool/get_cds.py`
+  - **环境变量**:
+    ```env
+    # 必须提供一个邮箱地址以符合NCBI的使用政策
+    NCBI_EMAIL="your_email@example.com"
+    # 建议配置NCBI API Key以提高请求速率限制
+    NCBI_API_KEY="your_ncbi_api_key_here"
+    ```
+
+- **OpenRouter API (多 Agent 架构)**
+  - **用途**: 驱动 `multi_agent_system` 中的 LangGraph LLM Agents。
+  - **文件**: `multi_agent_system/supervisor_workflow.py`
+  - **环境变量**:
+    ```env
+    OPENROUTER_API_KEY="sk-or-v1-..."
+    ```
+
+- **阿里云 DashScope API (单 Agent 架构)**
+  - **用途**: 为RAG功能提供文本嵌入模型 (`text-embedding-v4`)。
+  - **文件**: `tools_pool/strategy_query.py`
+  - **环境变量**:
+    ```env
+    DASHSCOPE_API_KEY="sk-..."
+    ```
+
+- **九章智算云 gpt-oss 服务 (单 Agent 架构 - 重要)**
+  - **用途**: 为RAG功能提供生成模型 (`gpt-oss:120b`)。
+  - **来源**: 由黑客松赞助商提供，**服务是临时性的，API密钥将在短期内失效**。
+  - **后续操作**: 开发者需要自行替换为稳定的大语言模型服务。
+  - **硬编码配置 (位于 `tools_pool/strategy_query.py`)**:
+    - **Endpoint**: `http://183.166.183.48:31000/v1`
+    - **API Key**: `sk-D6qbkOihiky065Dq02C0F99895274880832d9705C83b9cAb` (将失效)
+
+### 2. 数据服务
+
+项目处理的序列文件（如 `.fasta`, `.gb`）都存放在 `data/` 目录中。为了方便 Agent 或其他工具通过 HTTP 访问这些文件，您可以在 `data/` 目录下启动一个简单的 HTTP 服务器。
+
+进入 `data` 目录并运行以下命令：
+```bash
+cd data
+python -m http.server 8999
+```
+这样，`data` 目录下的所有文件就可以通过 `http://localhost:8999/<文件名>` 的方式被访问。
+
+### 3. 联系方式
+
+- **项目联系邮箱 (位于 `tools_pool/get_cds.py`)**:
+  - 代码中硬编码了一个备用邮箱 `fym22@mails.tsinghua.edu.cn`，但强烈建议通过 `NCBI_EMAIL` 环境变量设置您自己的邮箱。
+
 ## 后续开发方向
 
 本项目为未来的扩展奠定了坚实的基础，以下是一些建议的开发方向：
