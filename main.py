@@ -19,6 +19,7 @@ from tools_pool.generate_map import generate_map
 from common_utils.file_operations import list_data
 from tools_pool.strategy_query import recommend_cloning_strategy
 from tools_pool.get_cds import get_cds_by_gene
+from tools_pool.simulate_gel_purification import simulate_gel_purification
 
 # 初始化 FastMCP 服务器（注意：stdio 模式下不要向 stdout 打印任意文本）
 mcp = FastMCP("my-mcp-server")
@@ -30,8 +31,8 @@ mcp.tool()(find_features) # 查找序列中的特征（features，包括酶切�
 mcp.tool()(design_primer_suite) # 设计引物套件（Primer Suite），返回引物列表
 mcp.tool()(simulate_restriction_digestion) # 模拟限制性内切酶消化，返回消化后的片段列表
 mcp.tool()(simulate_pcr) # 模拟PCR扩增，返回扩增后的片段列表
-mcp.tool()(write_record_to_json) # 将记录写入JSON文件
-mcp.tool()(load_sequence_from_json) # 从JSON文件加载SequenceRecord等符合Schema的记录
+#mcp.tool()(write_record_to_json) # 将记录写入JSON文件
+#mcp.tool()(load_sequence_from_json) # 从JSON文件加载SequenceRecord等符合Schema的记录
 #mcp.tool()(get_sequence) # 从包含 "sequence" 字段的 JSON 文件中读取序列，并返回序列字符串本身
 mcp.tool()(simulate_ligation) # 模拟DNA连接，返回连接后的片段
 mcp.tool()(simulate_end_repair) # 末端修复，将粘性末端修复为平末端
@@ -45,7 +46,7 @@ mcp.tool()(list_data) # 列出 /data/ 目录下的文件树结构
 mcp.tool()(recommend_cloning_strategy) # 基于RAG的克隆策略推荐
 mcp.tool()(generate_map) # 生成序列的可视化图谱
 mcp.tool()(get_cds_by_gene) # 从NCBI获取基因CDS序列，需要明确指定物种
-
+mcp.tool()(simulate_gel_purification) # 模拟胶回收，从酶切产物中选择特定片段
 
 def main():
     """启动 MCP 服务器"""

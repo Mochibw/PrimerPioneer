@@ -224,14 +224,15 @@ class PlasmidMapper:
         plt.savefig(output_path, dpi=dpi, bbox_inches='tight', facecolor='white')
         plt.close()
 
-def generate_map(json_path: str, output_path: Optional[str] = None) -> Dict[str, str]:
+def generate_map(json_path: str, output_path: Optional[str] = None, record_index: int = 0) -> Dict[str, str]:
     """
-    从 SequenceRecord JSON 文件生成质粒图谱可视化。当你需要展示生成的图片时，请用"![图片名称](图片路径)"的Markdown语法插入。路径中，请将"data/"替换为"http://localhost:8999/"
+    从 SequenceRecord JSON 文件生成质粒图谱可视化。当你需要展示生成的图片时，请用"![图片名称](图片路径)"的Markdown语法插入。路径中，请将"data/"替换为"http://localhost:8999/，如http://loca1host:8999/temp/plasmid.png"。
 
     Args:
         json_path (str): 输入的 SequenceRecord JSON 文件路径。
         output_path (Optional[str]): 输出图像文件的路径。如果未提供，
                                      将根据输入文件名在同一目录下生成一个 .png 文件。
+        record_index (int): 当输入文件包含多个记录时，指定要可视化的记录索引。默认为 0（第一个记录）。
 
     Returns:
         Dict[str, str]: 包含输出文件路径的字典。
@@ -240,9 +241,19 @@ def generate_map(json_path: str, output_path: Optional[str] = None) -> Dict[str,
         raise FileNotFoundError(f"输入文件未找到: {json_path}")
 
     # 自动注释常见特征
-    annotate_features(json_path)
+    annotate_features(json_path, record_index=record_index)
 
-    record = load_sequence_from_json(json_path)
+    data = load_sequence_from_json(json_path)
+    
+    # 处理可能的记录列表情况
+    if isinstance(data, list):
+        if not data:
+            raise ValueError("输入文件中没有找到任何记录。")
+        if record_index >= len(data):
+            raise ValueError(f"记录索引 {record_index} 超出范围。文件中只有 {len(data)} 个记录。")
+        record = data[record_index]
+    else:
+        record = data
     
     if output_path is None:
         base_name = os.path.splitext(os.path.basename(json_path))[0]
