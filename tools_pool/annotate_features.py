@@ -47,14 +47,16 @@ COMMON_FEATURES = [
     {"name": "INS CDS", "type": "cds", "sequence": "ATGGCCCTGTGGATGCGCCTCCTGCCCCTGCTGGCGCTGCTGGCCCTCTGGGGACCTGACCCAGCCGCAGCCTTTGTGAACCAACACCTGTGCGGCTCACACCTGGTGGAAGCTCTCTACCTAGTGTGCGGGGAACGAGGCTTCTTCTACACACCCAAGACCCGCCGGGAGGCAGAGGACCTGCAGGTGGGGCAGGTGGAGCTGGGCGGGGGCCCTGGTGCAGGCAGCCTGCAGCCCTTGGCCCTGGAGGGGTCCCTGCAGAAGCGTGGCATTGTGGAACAATGCTGTACCAGCATCTGCTCCCTCTACCAGCTGGAGAACTACTGCAACTAG"},
 ]
 
-def annotate_features(json_path: str, output_path: Optional[str] = None) -> Dict[str, Any]:
+def annotate_features(json_path: str, output_path: Optional[str] = None, record_index: int = 0) -> Dict[str, Any]:
     """
     Adds common features to a SequenceRecord based on sequence matching.
     
     Args:
-        json_path (str): Path to the input JSON file containing the SequenceRecord.
+        json_path (str): Path to the input JSON file containing the SequenceRecord or a list of SequenceRecords.
         output_path (Optional[str]): Path to save the annotated SequenceRecord. 
                                     If not provided, overwrites the input file.
+        record_index (int): When the input file contains multiple records, specifies which record to annotate. 
+                           Defaults to 0 (the first record).
     
     Returns:
         Dict[str, any]: Dictionary containing:
@@ -62,7 +64,17 @@ def annotate_features(json_path: str, output_path: Optional[str] = None) -> Dict
             - "added_annotations": List of annotations that were successfully added.
     """
     # Load the sequence record
-    record = load_sequence_from_json(json_path)
+    data = load_sequence_from_json(json_path)
+    
+    # Handle possible list of records
+    if isinstance(data, list):
+        if not data:
+            raise ValueError("No records found in the input file")
+        if record_index >= len(data):
+            raise ValueError(f"Record index {record_index} is out of range. The file contains only {len(data)} records.")
+        record = data[record_index]
+    else:
+        record = data
     
     # Get sequence information
     sequence = (record.get("sequence") or "").upper()
@@ -143,12 +155,19 @@ def annotate_features(json_path: str, output_path: Optional[str] = None) -> Dict
     # Update the record with new features
     record["features"] = found_features
     
+    # If the input was a list, update the specific record in the list
+    if isinstance(data, list):
+        data[record_index] = record
+        final_data = data
+    else:
+        final_data = record
+    
     # Determine output path
     if output_path is None:
         output_path = json_path
     
-    # Save the updated record
-    write_record_to_json(record, output_path)
+    # Save the updated record(s)
+    write_record_to_json(final_data, output_path)
     
     return {
         "annotated_file_path": output_path,

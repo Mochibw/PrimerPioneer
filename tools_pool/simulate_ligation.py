@@ -8,7 +8,7 @@ from common_utils.file_operations import write_record_to_json, load_sequence_fro
 
 def simulate_ligation(fragments_json_paths: List[str],
                       allow_circularization: bool = True,
-                      sticky_end_tolerance: bool = False,
+                      sticky_end_tolerance: bool = False,  # 参数保留但不启用“宽松匹配”
                       dephosphorylated_ends: Optional[List[str]] = None,
                       output_path: Optional[str] = None) -> Dict[str, Union[List[SequenceRecord], str]]:
     """
@@ -17,9 +17,9 @@ def simulate_ligation(fragments_json_paths: List[str],
     
     Args:
         fragments_json_paths: 要连接的片段JSON文件路径列表
-        allow_circularization: 是否允许环化连接
-        sticky_end_tolerance: 是否允许不完全匹配的粘性末端连接
-        dephosphorylated_ends: 已去磷酸化的末端列表（防止自连）
+        allow_circularization: 是否允许环化连接（当前仅生成环化产物）
+        sticky_end_tolerance: 是否允许不完全匹配的粘性末端连接（本实现中不启用宽松匹配）
+        dephosphorylated_ends: 已去磷酸化的末端列表（防止自连），命名形如 "frag0_3end", "frag1_5end"
         output_path: 输出JSON文件路径(可选)
         
     Returns:
@@ -28,8 +28,20 @@ def simulate_ligation(fragments_json_paths: List[str],
     # 加载所有片段
     fragments = []
     for frag_path in fragments_json_paths:
-        frag_data = load_sequence_from_json(frag_path)
-        fragments.append(frag_data)
+        data = load_sequence_from_json(frag_path)  # 可能是顶层对象
+        # 如果是顶层切割结果，就展开成若干真实片段
+        if isinstance(data, dict) and "fragments" in data:
+            for idx, frag in enumerate(data["fragments"]):
+                frag = frag.copy()
+                # 补一个易读名字，便于日志与调试
+                frag["name"] = frag.get("name") or frag.get("id") or f"{os.path.basename(frag_path)}::frag{idx}"
+                fragments.append(frag)
+        else:
+            # 已经是单片段结构
+            if "sequence" not in data:
+                raise ValueError(f"{frag_path} 不是单片段结构，也不含 fragments 列表，无法解析")
+            data["name"] = data.get("name") or data.get("id") or os.path.basename(frag_path)
+            fragments.append(data)
     
     # 检查去磷酸化状态
     if dephosphorylated_ends is None:
@@ -48,8 +60,7 @@ def simulate_ligation(fragments_json_paths: List[str],
                 product, is_circular = _try_circular_ligation_with_complementary_ends(
                     [fragments[i] for i in frag_order],
                     [f"frag{i}" for i in frag_order],
-                    dephosphorylated_ends,
-                    sticky_end_tolerance
+                    dephosphorylated_ends
                 )
                 
                 if product and is_circular:
@@ -77,9 +88,7 @@ def simulate_ligation(fragments_json_paths: List[str],
                 "sequence": product["sequence"],
                 "length": product["length"],
                 "circular": product["circular"],
-                "features": product["features"],
-                "overhang_5": product["overhang_5"],
-                "overhang_3": product["overhang_3"]
+                "features": product["features"]
             }
             output_products.append(output_product)
         
@@ -93,7 +102,7 @@ def simulate_ligation(fragments_json_paths: List[str],
     }
 
 def _try_circular_ligation_with_complementary_ends(fragments: List[Dict], frag_names: List[str], 
-                                                 dephosphorylated_ends: List[str], tolerance: bool) -> Tuple[Optional[Dict], bool]:
+                                                   dephosphorylated_ends: List[str]) -> Tuple[Optional[Dict], bool]:
     """尝试将多个片段连接成环状，要求粘性末端互补或都是平末端"""
     if len(fragments) == 0:
         return None, False
@@ -106,123 +115,161 @@ def _try_circular_ligation_with_complementary_ends(fragments: List[Dict], frag_n
         current_name = frag_names[i]
         next_name = frag_names[(i + 1) % len(fragments)]
         
-        # 检查去磷酸化状态
+        # 去磷酸化：两侧不能同时缺失 5' 磷酸
         current_dephos = f"{current_name}_3end" in dephosphorylated_ends
         next_dephos = f"{next_name}_5end" in dephosphorylated_ends
-        
         if current_dephos and next_dephos:
             return None, False
         
-        # 检查末端兼容性
+        # 检查末端兼容性（严格互补）
         current_3end = current_frag.get("overhang_3", {"kind": "blunt", "seq": ""})
         next_5end = next_frag.get("overhang_5", {"kind": "blunt", "seq": ""})
         
-        if not _are_compatible_ends(current_3end, next_5end, tolerance):
+        if not _are_compatible_ends(current_3end, next_5end):
             return None, False
     
     # 所有连接都兼容，构建环状产物
     return _build_circular_product(fragments, frag_names), True
 
-def _are_compatible_ends(end1: Dict, end2: Dict, tolerance: bool) -> bool:
-    """检查两个末端是否兼容：粘性末端互补或都是平末端"""
-    # 都是平末端
-    if end1["kind"] == "blunt" and end2["kind"] == "blunt":
+
+# ========= 兼容性判定相关：规范化 + 严格互补 =========
+
+def _normalize_overhang(end: Dict) -> Tuple[str, str]:
+    """
+    把 overhang 统一为“沿接合方向（左->右）观察到的 5'→3' 单链序列”。
+    返回 (kind_norm, seq_norm)，kind_norm ∈ {"blunt", "5_overhang", "3_overhang"}。
+    """
+    kind = end.get("kind", "blunt")
+    seq = end.get("seq", "").upper()
+
+    if kind == "blunt" or not seq:
+        return "blunt", ""
+
+    if kind == "5_overhang":
+        # 已经是朝接合方向的 5'→3'
+        return "5_overhang", seq
+
+    if kind == "3_overhang":
+        # 反向互补，统一到“接合方向的 5'→3'”
+        complement = {'A':'T','T':'A','C':'G','G':'C'}
+        rc = ''.join(complement.get(b, b) for b in reversed(seq))
+        return "3_overhang", rc
+
+    # 未知类型兜底
+    return kind, seq
+
+
+def _are_compatible_ends(end1: Dict, end2: Dict) -> bool:
+    """两个末端兼容：平/平；或同极性黏性端且严格反向互补"""
+    # 平末端直接兼容
+    if end1.get("kind") == "blunt" and end2.get("kind") == "blunt":
         return True
-    
-    # 都是5'突出末端
-    if end1["kind"] == "5_overhang" and end2["kind"] == "5_overhang":
-        return _are_complementary_sticky_ends(end1["seq"], end2["seq"], tolerance)
-    
-    # 都是3'突出末端
-    if end1["kind"] == "3_overhang" and end2["kind"] == "3_overhang":
-        return _are_complementary_sticky_ends(end1["seq"], end2["seq"], tolerance)
-    
-    # 类型不匹配
-    return False
 
-def _are_complementary_sticky_ends(seq1: str, seq2: str, tolerance: bool) -> bool:
-    """检查两个粘性末端序列是否互补"""
-    if tolerance:
-        # 允许不完全匹配
-        return seq1 == seq2 or _are_reverse_complement(seq1, seq2)
-    else:
-        # 要求完全互补
-        return _are_reverse_complement(seq1, seq2)
+    kind1, seq1 = _normalize_overhang(end1)
+    kind2, seq2 = _normalize_overhang(end2)
 
-def _are_reverse_complement(seq1: str, seq2: str) -> bool:
-    """检查两个序列是否反向互补"""
+    # 必须同极性（都 5′ 或都 3′）
+    if kind1 == "blunt" or kind2 == "blunt" or kind1 != kind2:
+        return False
+
+    # 严格互补（不启用宽松匹配）
     if len(seq1) != len(seq2):
         return False
-    
-    complement = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C'}
-    rev_comp_seq2 = ''.join(complement.get(base, base) for base in reversed(seq2))
-    
-    return seq1 == rev_comp_seq2
+
+    complement = {'A':'T','T':'A','C':'G','G':'C'}
+    rc2 = ''.join(complement.get(b, b) for b in reversed(seq2))
+    return seq1 == rc2
+
+
+# ========= 构建序列：按极性决定从哪一侧裁剪 =========
 
 def _build_circular_product(fragments: List[Dict], frag_names: List[str]) -> Dict:
-    """构建环状连接产物"""
+    """构建环状连接产物（严格根据 5′/3′ 极性裁剪重叠）"""
     try:
-        # 构建完整序列
-        full_sequence = ""
-        current_offset = 0
-        feature_offsets = [0]
-        
-        for i, frag in enumerate(fragments):
-            if i > 0:
-                # 移除前一个片段的3'端重叠序列
-                prev_3end = fragments[i-1].get("overhang_3", {"kind": "blunt", "seq": ""})
-                overlap_len = len(prev_3end.get("seq", "")) if prev_3end["kind"] != "blunt" else 0
-                full_sequence = full_sequence[:-overlap_len] if overlap_len > 0 else full_sequence
-                current_offset -= overlap_len
-            
-            full_sequence += frag["sequence"]
-            if i < len(fragments) - 1:
-                feature_offsets.append(current_offset + len(frag["sequence"]))
-            current_offset += len(frag["sequence"])
-        
-        # 处理最后一个片段与第一个片段的连接
-        last_3end = fragments[-1].get("overhang_3", {"kind": "blunt", "seq": ""})
-        overlap_len = len(last_3end.get("seq", "")) if last_3end["kind"] != "blunt" else 0
-        if overlap_len > 0:
-            full_sequence = full_sequence[:-overlap_len]
-        
+        # 起始片段
+        full_sequence = fragments[0]["sequence"]
+        feature_offsets = [0]  # 第0个片段从0开始
+        current_offset = len(fragments[0]["sequence"])
+
+        # 依次把后续片段接到 full_sequence 右侧
+        for i in range(1, len(fragments)):
+            prev = fragments[i-1]
+            curr = fragments[i]
+
+            prev_3 = prev.get("overhang_3", {"kind":"blunt","seq":""})
+            kind_norm, _ = _normalize_overhang(prev_3)
+            overlap_len = len(prev_3.get("seq","")) if prev_3.get("kind") != "blunt" else 0
+
+            if kind_norm == "5_overhang":
+                # 从“当前片段开头”裁掉 overlap_len
+                full_sequence += curr["sequence"][overlap_len:]
+                feature_offsets.append(current_offset - overlap_len)  # 当前片段特征整体左移 overlap_len
+                current_offset += len(curr["sequence"]) - overlap_len
+            elif kind_norm == "3_overhang":
+                # 从“已累积序列的尾部”裁掉 overlap_len
+                if overlap_len > 0:
+                    full_sequence = full_sequence[:-overlap_len]
+                    current_offset -= overlap_len
+                full_sequence += curr["sequence"]
+                feature_offsets.append(current_offset)
+                current_offset += len(curr["sequence"])
+            else:
+                # blunt
+                full_sequence += curr["sequence"]
+                feature_offsets.append(current_offset)
+                current_offset += len(curr["sequence"])
+
+        # 闭环：处理最后一个片段 3′ 端与第一个片段 5′ 端
+        last_3 = fragments[-1].get("overhang_3", {"kind":"blunt","seq":""})
+        kind_norm_last, _ = _normalize_overhang(last_3)
+        overlap_len_last = len(last_3.get("seq","")) if last_3.get("kind") != "blunt" else 0
+
+        if overlap_len_last > 0:
+            if kind_norm_last == "3_overhang":
+                # 从 full_sequence 尾部裁剪
+                full_sequence = full_sequence[:-overlap_len_last]
+                # current_offset 表示线性构建过程的末端位置，闭环后不再使用，可不改
+            elif kind_norm_last == "5_overhang":
+                # 从“起点（第一个片段的开头）”裁剪
+                full_sequence = full_sequence[overlap_len_last:]
+                # 所有特征整体左移 overlap_len_last
+                feature_offsets = [ofs - overlap_len_last for ofs in feature_offsets]
+
         new_id = f"circular_{uuid.uuid4().hex[:8]}"
-        
-        # 合并和调整特征
+
+        # 合并与位移特征
         adjusted_features = []
-        
         for i, frag in enumerate(fragments):
-            offset = feature_offsets[i]
+            base_ofs = feature_offsets[i]
             for feat in frag.get("features", []):
-                adjusted_feat = feat.copy()
-                adjusted_feat["start"] = feat.get("start", 0) + offset
-                adjusted_feat["end"] = feat.get("end", 0) + offset
-                adjusted_features.append(adjusted_feat)
-        
-        # 构建名称
+                adjusted = feat.copy()
+                adjusted["start"] = feat.get("start", 0) + base_ofs
+                adjusted["end"] = feat.get("end", 0) + base_ofs
+                adjusted_features.append(adjusted)
+
         name_parts = [frag.get("name", frag_names[i]) for i, frag in enumerate(fragments)]
         product_name = "Circular-" + "-".join(name_parts)
-        
+
         return {
             "id": new_id,
             "name": product_name,
             "sequence": full_sequence,
             "length": len(full_sequence),
-            "circular": True,  # 关键：设置为环状
-            "features": adjusted_features,
-            "overhang_5": {"kind": "blunt", "seq": ""},  # 环状DNA没有突出端
-            "overhang_3": {"kind": "blunt", "seq": ""}   # 环状DNA没有突出端
+            "circular": True,
+            "features": adjusted_features
         }
     except KeyError:
         return None
 
-# 保持向后兼容的辅助函数
+
+# ======= 保持向后兼容的辅助函数（逻辑依旧使用严格互补） =======
+
 def _connect_blunt_ends(frag1: Dict, frag2: Dict) -> Optional[Dict]:
     """连接两个平末端片段（单片段环化）"""
-    product, is_circular = _try_circular_ligation_with_complementary_ends([frag1, frag2], ["frag1", "frag2"], [], False)
+    product, is_circular = _try_circular_ligation_with_complementary_ends([frag1, frag2], ["frag1", "frag2"], [])
     return product if is_circular else None
 
 def _connect_sticky_ends(frag1: Dict, frag2: Dict) -> Optional[Dict]:
     """连接两个粘性末端片段（单片段环化）"""
-    product, is_circular = _try_circular_ligation_with_complementary_ends([frag1, frag2], ["frag1", "frag2"], [], False)
+    product, is_circular = _try_circular_ligation_with_complementary_ends([frag1, frag2], ["frag1", "frag2"], [])
     return product if is_circular else None
